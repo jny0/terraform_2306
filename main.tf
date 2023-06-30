@@ -90,3 +90,93 @@ resource "aws_security_group" "sg_1" {
     Name = "${var.prefix}-sg-1"
   }
 }
+
+# Create IAM role for EC2
+resource "aws_iam_role" "ec2_role_1" {
+  name = "${var.prefix}-ec2-role-1"
+
+  assume_role_policy = <<EOF
+  {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Action": "sts:AssumeRole",
+        "Principal": {
+          "Service": "ec2.amazonaws.com"
+        },
+        "Effect": "Allow",
+        "Sid": ""
+      }
+    ]
+  }
+  EOF
+}
+
+
+# Attach AmazonS3FullAccess policy to the EC2 role
+resource "aws_iam_role_policy_attachment" "s3_full_access" {
+  role       = aws_iam_role.ec2_role_1.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+}
+
+# Attach AmazonEC2RoleforSSM policy to the EC2 role
+resource "aws_iam_role_policy_attachment" "ec2_ssm" {
+  role       = aws_iam_role.ec2_role_1.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforSSM"
+}
+
+resource "aws_iam_instance_profile" "instance_profile_1" {
+  name = "${var.prefix}-instance-profile-1"
+  role = aws_iam_role.ec2_role_1.name
+}
+
+resource "aws_instance" "ec2_1" {
+  ami                         = "ami-04b3f91ebd5bc4f6d"
+  instance_type               = "t2.micro"
+  subnet_id                   = aws_subnet.subnet_1.id
+  vpc_security_group_ids      = [aws_security_group.sg_1.id]
+  associate_public_ip_address = true
+
+  # Assign IAM role to the instance
+  iam_instance_profile = aws_iam_instance_profile.instance_profile_1.name
+
+  tags = {
+    Name = "${var.prefix}-ec2-1"
+  }
+}
+
+resource "aws_s3_bucket" "bucket" {
+  bucket = "dev-jyp1102-sample-1"
+
+  tags = {
+    Name = "${var.prefix}-bucket"
+  }
+}
+
+resource "aws_s3_bucket_policy" "bucket_policy" {
+  bucket = aws_s3_bucket.bucket.id
+
+  policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::dev-jyp1102-sample-1/*"
+    }
+  ]
+}
+EOF
+}
+
+resource "aws_s3_bucket_public_access_block" "public_access_block" {
+  bucket = aws_s3_bucket.bucket.id
+
+  block_public_acls   = false
+  block_public_policy = false
+  ignore_public_acls  = false
+  restrict_public_buckets = false
+}
